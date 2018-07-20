@@ -21,8 +21,46 @@ Drivers
 
 AWS
 ---
-* topic_arn
-AWS SNS topic ARN.
+    keyword arguments for PubSub class
+        topic_arn
+            AWS SNS topic ARN.
+            
+    AWS policy for user of package (TOPIC_ARN should be replaced with the real ARN)
+       	{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "VisualEditor0",
+                    "Effect": "Allow",
+                    "Action": [
+                        "sqs:DeleteMessage",
+                        "sns:Publish",
+                        "sqs:AddPermission",
+                        "sqs:ReceiveMessage",
+                        "sqs:DeleteQueue",
+                        "sqs:SendMessage",
+                        "sns:Subscribe",
+                        "sqs:GetQueueAttributes",
+                        "sqs:CreateQueue",
+                        "sqs:SetQueueAttributes"
+                    ],
+                    "Resource": [
+                        "TOPIC-ARN",
+                        "arn:aws:sqs:*:*:PS_SUB_*"
+                    ]
+                },
+                {
+                    "Sid": "VisualEditor1",
+                    "Effect": "Allow",
+                    "Action": [
+                        "sns:SetSubscriptionAttributes",
+                        "sns:Unsubscribe"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }            
+        
 
 Changelog
 ==========
