@@ -9,25 +9,17 @@ import random
 import string
 import json
 
-class PubSub:
-    
-    def __init__(self, driver, **kw_args):
-        assert "AWS" == driver, "Unsupported driver: %s, supported drivers must be one of ['AWS']" % driver
-        self.topic_arn = kw_args['topic_arn']
-        self.region_name = self.topic_arn.split(':')[3]
-        self.sns_client = boto3.client('sns', region_name = self.region_name)
-        self.sqs_client = boto3.resource('sqs', region_name = self.region_name)
-        self.logger = kw_args.get('logger', logging.getLogger(__name__))
-        return
-    
-    def subscribe(self, channel, callback):
-        """ subscribe take a channel and a callback.  The callback is called with messages that come back """
+class Subscription:
+    def __init__(self, pubsub, channel, callback):
+        self.pubsub = pubsub
+        self.logger = pubsub.logger
+        self.channel = channel
         self._stop = False
         self.queue_name = 'PS_SUB_' + ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
         self.polling_thread = threading.Thread(target=self.polling_thread_function)
         self.callback = callback
-        self.queue = self.sqs_client.create_queue(QueueName = self.queue_name)
+        self.queue = self.pubsub.sqs_client.create_queue(QueueName = self.queue_name)
 
         # hack ahead, see: https://forums.aws.amazon.com/thread.jspa?threadID=223798
 
@@ -39,8 +31,8 @@ class PubSub:
         new_policy['Statement'][0]['Principal'] = '*'
         self.queue.set_attributes(Attributes={'Policy': json.dumps(new_policy)})
 
-        subscription = self.sns_client.subscribe(
-            TopicArn = self.topic_arn,
+        subscription = self.pubsub.sns_client.subscribe(
+            TopicArn = self.pubsub.topic_arn,
             Protocol = 'sqs',
             Endpoint = self.queue.attributes['QueueArn'],
             Attributes = {"FilterPolicy" : json.dumps({"Channel": [channel]})})
@@ -49,11 +41,6 @@ class PubSub:
         self.logger.info('set up subscriber')
         return
 
-    def publish(self, channel, data):
-        self.sns_client.publish(TopicArn = self.topic_arn, Message = json.dumps(data),
-                                MessageAttributes = {"Channel": {"DataType": "String",
-                                                                 "StringValue" : channel}})
-        return
         
     def polling_thread_function(self):
         while not self._stop:
@@ -70,10 +57,34 @@ class PubSub:
 
     def unsubscribe(self):
         self._stop = True
-        self.sns_client.unsubscribe(SubscriptionArn = self.subscription_arn)
+        self.pubsub.sns_client.unsubscribe(SubscriptionArn = self.subscription_arn)
         self.subscription_arn = None
         self.queue.delete()
         self.queue = None
         self.polling_thread = None
         self.callback = None
+
+    def __repr__(self):
+        return "<Subscription: channel=%s at 0x%02x>" % (self.channel, id(self))
+
+class PubSub:
+    def __init__(self, driver, **kw_args):
+        assert "AWS" == driver, "Unsupported driver: %s, supported drivers must be one of ['AWS']" % driver
+        self.topic_arn = kw_args['topic_arn']
+        self.region_name = self.topic_arn.split(':')[3]
+        self.sns_client = boto3.client('sns', region_name = self.region_name)
+        self.sqs_client = boto3.resource('sqs', region_name = self.region_name)
+        self.logger = kw_args.get('logger', logging.getLogger(__name__))
+        return
+    
+    def subscribe(self, channel, callback):
+        """ subscribe take a channel and a callback.  The callback is called with messages that come back """
+        return Subscription(self, channel, callback)
+
+    def publish(self, channel, data):
+        self.sns_client.publish(TopicArn = self.topic_arn, Message = json.dumps(data),
+                                MessageAttributes = {"Channel": {"DataType": "String",
+                                                                 "StringValue" : channel}})
+        return
+
         

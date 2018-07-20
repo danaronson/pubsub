@@ -7,10 +7,10 @@ Usage
     ps = pubsub.PubSub(driver, logger = python_logger, **kwargs) # kwargs dependant on driver
 
     # to subscribe
-    ps.subscribe(channel, callback_function) # callback function is called with published message
+    subscription = ps.subscribe(channel, callback_function) # callback function is called with published message
 
     # to unsubscribe
-    ps.unsubscribe()
+    subscription.unsubscribe()
     
     # to publish
     ps.publish(channel, message) # message is any object that can be turned into json
@@ -66,4 +66,7 @@ Changelog
 ==========
 * 0.1:
     * Initial version with support for both python2 and python3
+* 0.2:
+    * Subscription type support to allow multiple subscribers
+    
 
