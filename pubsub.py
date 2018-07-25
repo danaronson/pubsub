@@ -8,19 +8,18 @@ import threading
 import random
 import string
 import json
+import time
 
 class Subscription:
-    def __init__(self, pubsub, channel, callback):
+    def __init__(self, pubsub, channel, kwargs):
         self.pubsub = pubsub
         self.logger = pubsub.logger
         self.channel = channel
-        self._stop = False
         self.queue_name = 'PS_SUB_' + ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
-        self.polling_thread = threading.Thread(target=self.polling_thread_function)
-        self.callback = callback
         self.queue = self.pubsub.sqs_client.create_queue(QueueName = self.queue_name)
 
+        self.logger.info('created queue named: %s' % self.queue_name)
         # hack ahead, see: https://forums.aws.amazon.com/thread.jspa?threadID=223798
 
         self.queue.add_permission(Label='Public_send_permission',
@@ -37,28 +36,37 @@ class Subscription:
             Endpoint = self.queue.attributes['QueueArn'],
             Attributes = {"FilterPolicy" : json.dumps({"Channel": [channel]})})
         self.subscription_arn = subscription['SubscriptionArn']
+        self.callback = kwargs.get('callback', None)
+        self.items = kwargs.get('items', None)
+        self.polling_thread = threading.Thread(target=self.polling_thread_function)
         self.polling_thread.start()
-        self.logger.info('set up subscriber')
         return
 
-        
     def polling_thread_function(self):
+        self._stop = False
+        self.logger.info('starting polling thread function for channel %s' % self.channel)
         while not self._stop:
-            self.logger.info('checking for queue events')
-            for message in self.queue.receive_messages(WaitTimeSeconds=1):
-                self.logger.info('got message on queue of %s' % message.body)
-                try:
-                    msg = json.loads(message.body)['Message']
-                    self.logger.debug('got message of: %s' % msg)
-                    self.callback(msg)
-                    message.delete()
-                except:
-                    self.logger.exception('cannot print message %s' % message.body)
-
+            self.logger.info('checking for queue events on channel: %s' % self.channel)
+            for message in  self.queue.receive_messages(WaitTimeSeconds=1):
+                self.logger.info('got message on channel %s queue of %s' % (self.channel, message.body))
+                msg = json.loads(message.body)['Message']
+                if self.items is not None:
+                    self.items.append(msg)
+                if self.callback:
+                    try:
+                        self.callback(msg)
+                    except:
+                        self.logger.exception('error processing message %s' % message)
+                message.delete()
+        self.logger.info('exiting polling thread function for channel %s' % self.channel)
+        return
+    
     def unsubscribe(self):
+        self.logger.info('in unsubscribe to channel %s' % self.channel)
         self._stop = True
         self.pubsub.sns_client.unsubscribe(SubscriptionArn = self.subscription_arn)
         self.subscription_arn = None
+        self.logger.info('deleting queue name %s' % self.queue_name)
         self.queue.delete()
         self.queue = None
         self.polling_thread = None
@@ -77,11 +85,12 @@ class PubSub:
         self.logger = kw_args.get('logger', logging.getLogger(__name__))
         return
     
-    def subscribe(self, channel, callback):
-        """ subscribe take a channel and a callback.  The callback is called with messages that come back """
-        return Subscription(self, channel, callback)
+    def subscribe(self, channel, **kwargs):
+        """ subscribe take a channel and either callback or an item array.  The callback is called with messages that come back """
+        return Subscription(self, channel, kwargs)
 
     def publish(self, channel, data):
+        self.logger.info('publishing %s to %s' % (data, channel))
         self.sns_client.publish(TopicArn = self.topic_arn, Message = json.dumps(data),
                                 MessageAttributes = {"Channel": {"DataType": "String",
                                                                  "StringValue" : channel}})

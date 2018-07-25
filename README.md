@@ -7,7 +7,9 @@ Usage
     ps = pubsub.PubSub(driver, logger = python_logger, **kwargs) # kwargs dependant on driver
 
     # to subscribe
-    subscription = ps.subscribe(channel, callback_function) # callback function is called with published message
+    subscription = ps.subscribe(channel, callback=callback_function, items=items)
+      # if callback argument is used callback_function is called with the messages sent to publish
+      # if items argument is used and is a list, then messages are added to that list
 
     # to unsubscribe
     subscription.unsubscribe()
@@ -68,5 +70,6 @@ Changelog
     * Initial version with support for both python2 and python3
 * 0.2:
     * Subscription type support to allow multiple subscribers
-    
+* 0.3:
+    * Added collect argument to subscribe
 
